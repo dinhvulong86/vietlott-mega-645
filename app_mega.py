@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from io import StringIO
-import os
 
 # Cấu hình trang web
 st.set_page_config(
@@ -107,6 +105,8 @@ def parse_vietlott_text(raw_text):
         if not line or ',' not in line:
             continue
         parts = line.split(',')
+        if len(parts) < 2:
+            continue
         date_str = parts[0].strip()
         nums_str = parts[1].strip()
         
@@ -118,8 +118,12 @@ def parse_vietlott_text(raw_text):
                 records.append({
                     'dt': dt,
                     'Ngày': dt.strftime('%d/%m/%Y'),
-                    'N1': nums[0], 'N2': nums[1], 'N3': nums[2],
-                    'N4': nums[3], 'N5': nums[4], 'N6': nums[5]
+                    'N1': nums[0],
+                    'N2': nums[1],
+                    'N3': nums[2],
+                    'N4': nums[3],
+                    'N5': nums[4],
+                    'N6': nums[5]
                 })
     df = pd.DataFrame(records)
     if not df.empty:
@@ -129,14 +133,14 @@ def parse_vietlott_text(raw_text):
         df.insert(0, 'Kỳ', [f"#{i+1:03d}" for i in range(len(df))])
     return df
 
-# Khởi tạo dữ liệu trong session_state để hỗ trợ thêm kỳ mới trực tiếp trên web
+# Khởi tạo dữ liệu trong session_state
 if 'history_text' not in st.session_state:
     st.session_state.history_text = RAW_HISTORY_DATA
 
 # Thanh bên (Sidebar) để tải thêm file hoặc nhập kỳ mới
 with st.sidebar:
     st.header("📥 Cập nhật dữ liệu mới")
-    st.write("Bạn có thể tải file `.txt` / `.csv` (định dạng `dd/mm/yyyy,01 - 02 - 03 - 04 - 05 - 06`) hoặc nhập trực tiếp kỳ quay mới:")
+    st.write("Tải lên file `.txt` / `.csv` (định dạng `dd/mm/yyyy,01 - 02 - 03 - 04 - 05 - 06`) hoặc nhập trực tiếp kỳ quay mới:")
     
     uploaded_file = st.file_uploader("Tải lên file lịch sử của bạn", type=['txt', 'csv'])
     if uploaded_file is not None:
@@ -157,6 +161,10 @@ with st.sidebar:
             st.error("Vui lòng nhập đủ ngày và 6 số.")
 
 df = parse_vietlott_text(st.session_state.history_text)
+
+if df.empty:
+    st.error("Không có dữ liệu hợp lệ để phân tích. Vui lòng kiểm tra lại định dạng dữ liệu.")
+    st.stop()
 
 st.caption(f"Nguồn dữ liệu: **Dữ liệu thực tế Mega 6/45** | Tổng số kỳ phân tích: **{len(df)} kỳ** (Từ **{df['Ngày'].iloc[0]}** đến **{df['Ngày'].iloc[-1]}**)")
 
@@ -212,7 +220,7 @@ with tab1:
                     weights = freq_df['Số kỳ chưa về'].values + 1
                     probs = weights / weights.sum()
                     chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
-                else: # Cân bằng Chẵn - Lẻ
+                else:
                     evens = np.random.choice(range(2, 46, 2), 3, replace=False)
                     odds = np.random.choice(range(1, 46, 2), 3, replace=False)
                     chosen = sorted(np.concatenate([evens, odds]))
@@ -232,7 +240,7 @@ with tab2:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất)**")
-        top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
+top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
 st.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
 with c2:
 st.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
@@ -251,4 +259,3 @@ st.plotly_chart(fig, use_container_width=True)
 with tab3:
 st.subheader("Dữ liệu các kỳ quay gần nhất")
 st.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
-
