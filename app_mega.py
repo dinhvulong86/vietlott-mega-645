@@ -29,7 +29,7 @@ RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 03/06/2026,03 - 11 - 26 - 33 - 36 - 38
 05/06/2026,13 - 16 - 19 - 32 - 36 - 39
 07/06/2026,14 - 21 - 26 - 30 - 34 - 35
-10/06/2026,03 - 09 - 17 - 22 - 32 - 27
+10/06/2026,03 - 09 - 17 - 22 - 27 - 32
 12/06/2026,05 - 15 - 30 - 34 - 37 - 38
 14/06/2026,07 - 16 - 20 - 22 - 24 - 38
 17/06/2026,05 - 06 - 16 - 28 - 35 - 39
@@ -138,12 +138,10 @@ def build_markov_probabilities(df):
         for num_curr in current_draw:
             for num_next in next_draw:
                 transition_matrix[num_curr][num_next] += 1
-    
     last_draw = draws[-1]
     next_scores = np.zeros(46)
     for num in last_draw:
         next_scores += transition_matrix[num]
-    
     probs = next_scores[1:46]
     probs = probs / probs.sum()
     return probs, last_draw
@@ -211,10 +209,7 @@ last_seen = {}
 for num in range(1, 46):
     mask = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].isin([num]).any(axis=1)
     indices = df.index[mask].tolist()
-    if indices:
-        last_seen[num] = len(df) - 1 - indices[-1]
-    else:
-        last_seen[num] = len(df)
+    last_seen[num] = (len(df) - 1 - indices[-1]) if indices else len(df)
 freq_df['Số kỳ chưa về'] = freq_df['Số'].map(last_seen)
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -249,25 +244,22 @@ predict_btn = col1.button("🚀 Chạy mô hình dự đoán", type="primary", u
 
 if predict_btn:
     col2.success(f"Kết quả phân tích từ kỳ gốc **{latest_str}** (Tổng điểm lọc: {sum_range[0]}–{sum_range[1]}):")
-    
-    if algo_choice == "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn":
-        weights = markov_probs
-    elif algo_choice == "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn":
-        hot_probs = (freq_df['Số lần xuất hiện'].values + 1)
-        hot_probs = hot_probs / hot_probs.sum()
-        weights = 0.6 * markov_probs + 0.4 * hot_probs
-    elif algo_choice == "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn":
-        cold_probs = (freq_df['Số kỳ chưa về'].values + 1)
-        weights = cold_probs / cold_probs.sum()
-    else:
-weights = np.ones(45) / 45.0
-generated_list = []
+    hot_probs = (freq_df['Số lần xuất hiện'].values + 1) / (freq_df['Số lần xuất hiện'].values + 1).sum()
+    cold_probs = (freq_df['Số kỳ chưa về'].values + 1) / (freq_df['Số kỳ chưa về'].values + 1).sum()
+    algo_map = {
+        "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs,
+        "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_probs,
+        "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_probs,
+        "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": np.ones(45) / 45.0
+    }
+    weights = algo_map[algo_choice]
+
+    generated_list = []
 attempts = 0
 while len(generated_list) < num_sets and attempts < 5000:
 attempts += 1
 candidate = sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights))
-if is_valid_combination(candidate, sum_range[0], sum_range[1], balance_eo):
-if candidate not in generated_list:
+if is_valid_combination(candidate, sum_range[0], sum_range[1], balance_eo) and candidate not in generated_list:
 generated_list.append(candidate)
 if not generated_list:
 col2.error("Điều kiện lọc quá khắt khe, không tìm thấy bộ số phù hợp. Hãy nới rộng khoảng Tổng điểm!")
@@ -324,17 +316,17 @@ tab3.error("Vui lòng nhập chính xác 6 số khác nhau từ 01 đến 45.")
 else:
 user_set = set(clean_nums)
 matches = []
+prize_map = {3: "Giải Ba (30.000đ)", 4: "Giải Nhì (300.000đ)", 5: "Giải Nhất (10.000.000đ)", 6: "JACKPOT"}
 for idx, row in df.iterrows():
 draw_set = {row['N1'], row['N2'], row['N3'], row['N4'], row['N5'], row['N6']}
 hit_count = len(user_set.intersection(draw_set))
 if hit_count >= 3:
-prize = {3: "Giải Ba (30.000đ)", 4: "Giải Nhì (300.000đ)", 5: "Giải Nhất (10.000.000đ)", 6: "JACKPOT"}[hit_count]
 matches.append({
 'Kỳ': row['Kỳ'],
 'Ngày': row['Ngày'],
 'Kết quả kỳ đó': f"{row['N1']:02d} - {row['N2']:02d} - {row['N3']:02d} - {row['N4']:02d} - {row['N5']:02d} - {row['N6']:02d}",
 'Số trùng': f"{hit_count} số",
-'Hạng giải': prize
+'Hạng giải': prize_map[hit_count]
 })
 if matches:
 tab3.success(f"Bộ số của bạn đã từng trúng giải {len(matches)} lần trong {len(df)} kỳ lịch sử!")
