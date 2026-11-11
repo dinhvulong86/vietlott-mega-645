@@ -31,7 +31,7 @@ RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 03/06/2026,03 - 11 - 26 - 33 - 36 - 38
 05/06/2026,13 - 16 - 19 - 32 - 36 - 39
 07/06/2026,14 - 21 - 26 - 30 - 34 - 35
-10/06/2026,03 - 09 - 17 - 22 - 27 - 32
+10/06/2026,03 - 09 - 17 - 22 - 32 - 27
 12/06/2026,05 - 15 - 30 - 34 - 37 - 38
 14/06/2026,07 - 16 - 20 - 22 - 24 - 38
 17/06/2026,05 - 06 - 16 - 28 - 35 - 39
@@ -97,7 +97,7 @@ RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 06/11/2026,01 - 10 - 37 - 38 - 39 - 45
 08/11/2026,01 - 02 - 14 - 20 - 23 - 36"""
 
-# Hàm chuyển đổi định dạng dữ liệu "dd/mm/yyyy,01 - 02 - 03 - 04 - 05 - 06"
+# Hàm chuyển đổi định dạng dữ liệu
 def parse_vietlott_text(raw_text):
     records = []
     for line in raw_text.strip().splitlines():
@@ -110,8 +110,7 @@ def parse_vietlott_text(raw_text):
         date_str = parts[0].strip()
         nums_str = parts[1].strip()
         
-        # Tách các số cách nhau bởi dấu gạch ngang "-"
-        nums = [int(x.strip()) for x in nums_str.split('-') if x.strip().isdigit()]
+        nums = sorted([int(x.strip()) for x in nums_str.split('-') if x.strip().isdigit()])
         if len(nums) == 6:
             dt = pd.to_datetime(date_str, format='%d/%m/%Y', errors='coerce')
             if not pd.isna(dt):
@@ -137,28 +136,27 @@ def parse_vietlott_text(raw_text):
 if 'history_text' not in st.session_state:
     st.session_state.history_text = RAW_HISTORY_DATA
 
-# Thanh bên (Sidebar) để tải thêm file hoặc nhập kỳ mới
-with st.sidebar:
-    st.header("📥 Cập nhật dữ liệu mới")
-    st.write("Tải lên file `.txt` / `.csv` (định dạng `dd/mm/yyyy,01 - 02 - 03 - 04 - 05 - 06`) hoặc nhập trực tiếp kỳ quay mới:")
-    
-    uploaded_file = st.file_uploader("Tải lên file lịch sử của bạn", type=['txt', 'csv'])
-    if uploaded_file is not None:
-        content = uploaded_file.getvalue().decode("utf-8")
-        st.session_state.history_text = content
-        st.success("Đã nạp dữ liệu từ file tải lên!")
+# Thanh bên (Sidebar) cập nhật dữ liệu mới
+st.sidebar.header("📥 Cập nhật dữ liệu mới")
+st.sidebar.write("Tải lên file `.txt` / `.csv` hoặc nhập trực tiếp kỳ quay mới:")
 
-    st.divider()
-    st.subheader("➕ Thêm nhanh 1 kỳ quay mới")
-    new_date = st.text_input("Ngày quay (dd/mm/yyyy):", placeholder="Ví dụ: 11/11/2026")
-    new_nums = st.text_input("6 số trúng thưởng:", placeholder="Ví dụ: 05 - 12 - 19 - 24 - 33 - 41")
-    if st.button("Thêm vào danh sách", use_container_width=True):
-        if new_date and new_nums:
-            new_line = f"\n{new_date.strip()},{new_nums.strip()}"
-            st.session_state.history_text += new_line
-            st.success(f"Đã thêm kỳ ngày {new_date}!")
-        else:
-            st.error("Vui lòng nhập đủ ngày và 6 số.")
+uploaded_file = st.sidebar.file_uploader("Tải lên file lịch sử của bạn", type=['txt', 'csv'])
+if uploaded_file is not None:
+    content = uploaded_file.getvalue().decode("utf-8")
+    st.session_state.history_text = content
+    st.sidebar.success("Đã nạp dữ liệu từ file tải lên!")
+
+st.sidebar.divider()
+st.sidebar.subheader("➕ Thêm nhanh 1 kỳ quay mới")
+new_date = st.sidebar.text_input("Ngày quay (dd/mm/yyyy):", placeholder="Ví dụ: 11/11/2026")
+new_nums = st.sidebar.text_input("6 số trúng thưởng:", placeholder="Ví dụ: 05 - 12 - 19 - 24 - 33 - 41")
+if st.sidebar.button("Thêm vào danh sách", use_container_width=True):
+    if new_date and new_nums:
+        new_line = f"\n{new_date.strip()},{new_nums.strip()}"
+        st.session_state.history_text += new_line
+        st.sidebar.success(f"Đã thêm kỳ ngày {new_date}!")
+    else:
+        st.sidebar.error("Vui lòng nhập đủ ngày và 6 số.")
 
 df = parse_vietlott_text(st.session_state.history_text)
 
@@ -166,7 +164,9 @@ if df.empty:
     st.error("Không có dữ liệu hợp lệ để phân tích. Vui lòng kiểm tra lại định dạng dữ liệu.")
     st.stop()
 
-st.caption(f"Nguồn dữ liệu: **Dữ liệu thực tế Mega 6/45** | Tổng số kỳ phân tích: **{len(df)} kỳ** (Từ **{df['Ngày'].iloc[0]}** đến **{df['Ngày'].iloc[-1]}**)")
+first_day = df['Ngày'].iloc[0]
+last_day = df['Ngày'].iloc[-1]
+st.caption(f"Nguồn dữ liệu: **Dữ liệu thực tế Mega 6/45** | Tổng số kỳ phân tích: **{len(df)} kỳ** (Từ **{first_day}** đến **{last_day}**)")
 
 # --- PHÂN TÍCH TẦN SUẤT ---
 all_numbers = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
@@ -189,63 +189,60 @@ freq_df['Số kỳ chưa về'] = freq_df['Số'].map(last_seen)
 # --- GIAO DIỆN CHÍNH ---
 tab1, tab2, tab3 = st.tabs(["🎲 Tạo Bộ Số Gợi Ý", "📊 Biểu Đồ Tần Suất", "📋 Lịch Sử Kết Quả"])
 
-with tab1:
-    st.subheader("Trình tạo bộ số Mega 6/45 thông minh")
-    col1, col2 = st.columns([1, 1.5])
-    
-    with col1:
-        method = st.radio(
-            "Chọn phương pháp tạo số:",
-            [
-                "Ngẫu nhiên chuẩn (Xác suất đều)",
-                "Ưu tiên Số Nóng (Xuất hiện nhiều)",
-                "Ưu tiên Số Lạnh (Lâu chưa về)",
-                "Cân bằng Chẵn - Lẻ (3 Chẵn / 3 Lẻ)"
-            ]
-        )
-        num_sets = st.slider("Số lượng bộ số muốn tạo:", min_value=1, max_value=10, value=3)
-        generate_btn = st.button("🚀 Tạo bộ số may mắn", type="primary", use_container_width=True)
+# TAB 1: TẠO BỘ SỐ GỢI Ý
+tab1.subheader("Trình tạo bộ số Mega 6/45 thông minh")
+col1, col2 = tab1.columns([1, 1.5])
 
-    with col2:
-        if generate_btn:
-            st.success(f"Đã tạo **{num_sets}** bộ số theo phương pháp: **{method}**")
-            for i in range(num_sets):
-                if method == "Ngẫu nhiên chuẩn (Xác suất đều)":
-                    chosen = sorted(np.random.choice(range(1, 46), 6, replace=False))
-                elif method == "Ưu tiên Số Nóng (Xuất hiện nhiều)":
-                    weights = freq_df['Số lần xuất hiện'].values + 1
-                    probs = weights / weights.sum()
-                    chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
-                elif method == "Ưu tiên Số Lạnh (Lâu chưa về)":
-                    weights = freq_df['Số kỳ chưa về'].values + 1
-                    probs = weights / weights.sum()
-                    chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
-                else:
-                    evens = np.random.choice(range(2, 46, 2), 3, replace=False)
-                    odds = np.random.choice(range(1, 46, 2), 3, replace=False)
-                    chosen = sorted(np.concatenate([evens, odds]))
-                
-                balls_html = "".join([
-                    f"<span style='display:inline-block; background-color:#e60000; color:white; font-weight:bold; "
-                    f"border-radius:50%; width:42px; height:42px; line-height:42px; text-align:center; "
-                    f"margin-right:8px; font-size:18px;'>{n:02d}</span>"
-                    for n in chosen
-                ])
-                st.markdown(f"**Vé #{i+1}:** &nbsp; {balls_html}", unsafe_allow_html=True)
-                st.write("")
+method = col1.radio(
+    "Chọn phương pháp tạo số:",
+    [
+        "Ngẫu nhiên chuẩn (Xác suất đều)",
+        "Ưu tiên Số Nóng (Xuất hiện nhiều)",
+        "Ưu tiên Số Lạnh (Lâu chưa về)",
+        "Cân bằng Chẵn - Lẻ (3 Chẵn / 3 Lẻ)"
+    ]
+)
+num_sets = col1.slider("Số lượng bộ số muốn tạo:", min_value=1, max_value=10, value=3)
+generate_btn = col1.button("🚀 Tạo bộ số may mắn", type="primary", use_container_width=True)
 
-with tab2:
-    st.subheader("Thống kê tần suất xuất hiện (Từ 01 đến 45)")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất)**")
+if generate_btn:
+    col2.success(f"Đã tạo **{num_sets}** bộ số theo phương pháp: **{method}**")
+    for i in range(num_sets):
+        if method == "Ngẫu nhiên chuẩn (Xác suất đều)":
+            chosen = sorted(np.random.choice(range(1, 46), 6, replace=False))
+        elif method == "Ưu tiên Số Nóng (Xuất hiện nhiều)":
+            weights = freq_df['Số lần xuất hiện'].values + 1
+            probs = weights / weights.sum()
+            chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
+        elif method == "Ưu tiên Số Lạnh (Lâu chưa về)":
+            weights = freq_df['Số kỳ chưa về'].values + 1
+            probs = weights / weights.sum()
+            chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
+        else:
+            evens = np.random.choice(range(2, 46, 2), 3, replace=False)
+            odds = np.random.choice(range(1, 46, 2), 3, replace=False)
+            chosen = sorted(np.concatenate([evens, odds]))
+        
+        balls_html = "".join([
+            f"<span style='display:inline-block; background-color:#e60000; color:white; font-weight:bold; "
+            f"border-radius:50%; width:42px; height:42px; line-height:42px; text-align:center; "
+            f"margin-right:8px; font-size:18px;'>{n:02d}</span>"
+            for n in chosen
+        ])
+        col2.markdown(f"**Vé #{i+1}:** &nbsp; {balls_html}", unsafe_allow_html=True)
+        col2.write("")
+
+# TAB 2: BIỂU ĐỒ TẦN SUẤT
+tab2.subheader("Thống kê tần suất xuất hiện (Từ 01 đến 45)")
+c1, c2 = tab2.columns(2)
+
+c1.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất)**")
 top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
-st.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
-with c2 :
-st.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
+c1.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
+
+c2.markdown("❄️ **Top 10 Số Lạnh (Lâu chưa về nhất)**")
 top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
-st.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
+c2.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
 fig = px.bar(
 freq_df,
 x='Số',
@@ -255,7 +252,9 @@ color_continuous_scale='Reds',
 title="Biểu đồ phân bổ tần suất 45 con số Mega 6/45"
 )
 fig.update_xaxes(tickmode='linear', tick0=1, dtick=1)
-st.plotly_chart(fig, use_container_width=True)
-with tab3:
-st.subheader("Dữ liệu các kỳ quay gần nhất")
-st.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
+tab2.plotly_chart(fig, use_container_width=True)
+
+TAB 3: LỊCH SỬ KẾT QUẢ
+
+tab3.subheader("Dữ liệu các kỳ quay gần nhất")
+tab3.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
