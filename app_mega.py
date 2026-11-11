@@ -4,13 +4,13 @@ import numpy as np
 import plotly.express as px
 
 st.set_page_config(
-    page_title="Thống Kê & Gợi Ý Vietlott Mega 6/45",
+    page_title="Phân Tích & Dự Đoán Vietlott Mega 6/45 (AI/Markov)",
     page_icon="🎱",
     layout="wide"
 )
 
-st.title("🎱 Phân Tích Thống Kê & Gợi Ý Số Vietlott Mega 6/45")
-st.warning("⚠️ **Lưu ý:** Xổ số là trò chơi ngẫu nhiên độc lập. Các phân tích và bộ số dưới đây chỉ mang tính chất thống kê tham khảo, không đảm bảo trúng thưởng.")
+st.title("🎱 Phân Tích Chuyên Sâu & Dự Đoán Mega 6/45 (Chuỗi Markov)")
+st.warning("⚠️ **Lưu ý:** Mô hình sử dụng Chuỗi Markov và Bộ lọc phân phối chuẩn từ dữ liệu lịch sử để tối ưu hóa cấu trúc bộ số. Kết quả chỉ mang tính chất thống kê tham khảo.")
 
 RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 03/05/2026,07 - 09 - 14 - 24 - 38 - 39
@@ -29,7 +29,7 @@ RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 03/06/2026,03 - 11 - 26 - 33 - 36 - 38
 05/06/2026,13 - 16 - 19 - 32 - 36 - 39
 07/06/2026,14 - 21 - 26 - 30 - 34 - 35
-10/06/2026,03 - 09 - 17 - 22 - 27 - 32
+10/06/2026,03 - 09 - 17 - 22 - 32 - 27
 12/06/2026,05 - 15 - 30 - 34 - 37 - 38
 14/06/2026,07 - 16 - 20 - 22 - 24 - 38
 17/06/2026,05 - 06 - 16 - 28 - 35 - 39
@@ -118,7 +118,8 @@ def parse_vietlott_text(raw_text):
                     'N3': nums[2],
                     'N4': nums[3],
                     'N5': nums[4],
-                    'N6': nums[5]
+                    'N6': nums[5],
+                    'Tổng': sum(nums)
                 })
     df = pd.DataFrame(records)
     if not df.empty:
@@ -128,13 +129,48 @@ def parse_vietlott_text(raw_text):
         df.insert(0, 'Kỳ', [f"#{i+1:03d}" for i in range(len(df))])
     return df
 
+def build_markov_probabilities(df):
+    transition_matrix = np.ones((46, 46))
+    draws = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values
+    for i in range(len(draws) - 1):
+        current_draw = draws[i]
+        next_draw = draws[i + 1]
+        for num_curr in current_draw:
+            for num_next in next_draw:
+                transition_matrix[num_curr][num_next] += 1
+    
+    last_draw = draws[-1]
+    next_scores = np.zeros(46)
+    for num in last_draw:
+        next_scores += transition_matrix[num]
+    
+    probs = next_scores[1:46]
+    probs = probs / probs.sum()
+    return probs, last_draw
+
+def is_valid_combination(combo, min_sum, max_sum, balance_even_odd):
+    total = sum(combo)
+    if total < min_sum or total > max_sum:
+        return False
+    if balance_even_odd:
+        evens = sum(1 for x in combo if x % 2 == 0)
+        if evens < 2 or evens > 4:
+            return False
+    consecutive = 1
+    for i in range(1, len(combo)):
+        if combo[i] == combo[i-1] + 1:
+            consecutive += 1
+            if consecutive >= 4:
+                return False
+        else:
+            consecutive = 1
+    return True
+
 if 'history_text' not in st.session_state:
     st.session_state.history_text = RAW_HISTORY_DATA
 
 st.sidebar.header("📥 Cập nhật dữ liệu mới")
-st.sidebar.write("Tải lên file `.txt` / `.csv` hoặc nhập trực tiếp kỳ quay mới:")
-
-uploaded_file = st.sidebar.file_uploader("Tải lên file lịch sử của bạn", type=['txt', 'csv'])
+uploaded_file = st.sidebar.file_uploader("Tải lên file lịch sử (.txt / .csv)", type=['txt', 'csv'])
 if uploaded_file is not None:
     content = uploaded_file.getvalue().decode("utf-8")
     st.session_state.history_text = content
@@ -160,12 +196,16 @@ if df.empty:
 
 first_day = df['Ngày'].iloc[0]
 last_day = df['Ngày'].iloc[-1]
-st.caption(f"Nguồn dữ liệu: **Dữ liệu thực tế Mega 6/45** | Tổng số kỳ phân tích: **{len(df)} kỳ** (Từ **{first_day}** đến **{last_day}**)")
+markov_probs, latest_draw = build_markov_probabilities(df)
+latest_str = " - ".join([f"{x:02d}" for x in latest_draw])
+
+st.caption(f"Nguồn dữ liệu: **Thực tế Mega 6/45 ({len(df)} kỳ: {first_day} → {last_day})** | Kỳ gần nhất: **{latest_str}**")
 
 all_numbers = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
 freq_series = pd.Series(all_numbers).value_counts().reindex(range(1, 46), fill_value=0)
 freq_df = pd.DataFrame({'Số': freq_series.index, 'Số lần xuất hiện': freq_series.values})
 freq_df['Tỷ lệ (%)'] = (freq_df['Số lần xuất hiện'] / len(df) * 100).round(2)
+freq_df['Xác suất Markov (%)'] = (markov_probs * 100).round(2)
 
 last_seen = {}
 for num in range(1, 46):
@@ -175,74 +215,131 @@ for num in range(1, 46):
         last_seen[num] = len(df) - 1 - indices[-1]
     else:
         last_seen[num] = len(df)
-
 freq_df['Số kỳ chưa về'] = freq_df['Số'].map(last_seen)
 
-tab1, tab2, tab3 = st.tabs(["🎲 Tạo Bộ Số Gợi Ý", "📊 Biểu Đồ Tần Suất", "📋 Lịch Sử Kết Quả"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🧠 Dự Đoán Chuỗi Markov",
+    "📊 Phân Tích Chuyên Sâu",
+    "🔍 Dò Vé Lịch Sử",
+    "📋 Bảng Kết Quả"
+])
 
-tab1.subheader("Trình tạo bộ số Mega 6/45 thông minh")
-col1, col2 = tab1.columns([1, 1.5])
+tab1.subheader("Mô hình Dự đoán Xác suất Chuyển tiếp (Markov + Bộ lọc chuẩn)")
+col1, col2 = tab1.columns([1.1, 1.4])
 
-method = col1.radio(
-    "Chọn phương pháp tạo số:",
+algo_choice = col1.radio(
+    "Chọn thuật toán phân tích:",
     [
-        "Ngẫu nhiên chuẩn (Xác suất đều)",
-        "Ưu tiên Số Nóng (Xuất hiện nhiều)",
-        "Ưu tiên Số Lạnh (Lâu chưa về)",
-        "Cân bằng Chẵn - Lẻ (3 Chẵn / 3 Lẻ)"
+        "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn",
+        "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn",
+        "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn",
+        "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn"
     ]
 )
-num_sets = col1.slider("Số lượng bộ số muốn tạo:", min_value=1, max_value=10, value=3)
-generate_btn = col1.button("🚀 Tạo bộ số may mắn", type="primary", use_container_width=True)
 
-if generate_btn:
-    col2.success(f"Đã tạo **{num_sets}** bộ số theo phương pháp: **{method}**")
-    for i in range(num_sets):
-        if method == "Ngẫu nhiên chuẩn (Xác suất đều)":
-            chosen = sorted(np.random.choice(range(1, 46), 6, replace=False))
-        elif method == "Ưu tiên Số Nóng (Xuất hiện nhiều)":
-            weights = freq_df['Số lần xuất hiện'].values + 1
-            probs = weights / weights.sum()
-            chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
-        elif method == "Ưu tiên Số Lạnh (Lâu chưa về)":
-            weights = freq_df['Số kỳ chưa về'].values + 1
-            probs = weights / weights.sum()
-            chosen = sorted(np.random.choice(range(1, 46), 6, replace=False, p=probs))
-        else:
-            evens = np.random.choice(range(2, 46, 2), 3, replace=False)
-            odds = np.random.choice(range(1, 46, 2), 3, replace=False)
-            chosen = sorted(np.concatenate([evens, odds]))
-        
-        balls_html = "".join([
-            f"<span style='display:inline-block; background-color:#e60000; color:white; font-weight:bold; "
-            f"border-radius:50%; width:42px; height:42px; line-height:42px; text-align:center; "
-            f"margin-right:8px; font-size:18px;'>{n:02d}</span>"
-            for n in chosen
-        ])
-        col2.markdown(f"**Vé #{i+1}:** &nbsp; {balls_html}", unsafe_allow_html=True)
-        col2.write("")
-
-tab2.subheader("Thống kê tần suất xuất hiện (Từ 01 đến 45)")
-c1, c2 = tab2.columns(2)
-
-c1.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất)**")
-top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
-c1.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
-
-c2.markdown("❄️ **Top 10 Số Lạnh (Lâu chưa về nhất)**")
-top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
-c2.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
-
-fig = px.bar(
-    freq_df, 
-    x='Số', 
-    y='Số lần xuất hiện',
-    color='Số lần xuất hiện',
-    color_continuous_scale='Reds',
-    title="Biểu đồ phân bổ tần suất 45 con số Mega 6/45"
+sum_range = col1.slider(
+    "Giới hạn Tổng điểm 6 số (Vùng chuẩn: 105 - 175):",
+    min_value=50,
+    max_value=240,
+    value=(105, 175)
 )
-fig.update_xaxes(tickmode='linear', tick0=1, dtick=1)
-tab2.plotly_chart(fig, use_container_width=True)
+balance_eo = col1.checkbox("Lọc cân bằng Chẵn/Lẻ (Tỷ lệ 2-4, 3-3 hoặc 4-2)", value=True)
+num_sets = col1.slider("Số lượng bộ số đề xuất:", min_value=1, max_value=10, value=5)
+predict_btn = col1.button("🚀 Chạy mô hình dự đoán", type="primary", use_container_width=True)
 
-tab3.subheader("Dữ liệu các kỳ quay gần nhất")
-tab3.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
+if predict_btn:
+    col2.success(f"Kết quả phân tích từ kỳ gốc **{latest_str}** (Tổng điểm lọc: {sum_range[0]}–{sum_range[1]}):")
+    
+    if algo_choice == "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn":
+        weights = markov_probs
+    elif algo_choice == "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn":
+        hot_probs = (freq_df['Số lần xuất hiện'].values + 1)
+        hot_probs = hot_probs / hot_probs.sum()
+        weights = 0.6 * markov_probs + 0.4 * hot_probs
+    elif algo_choice == "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn":
+        cold_probs = (freq_df['Số kỳ chưa về'].values + 1)
+        weights = cold_probs / cold_probs.sum()
+    else:
+weights = np.ones(45) / 45.0
+generated_list = []
+attempts = 0
+while len(generated_list) < num_sets and attempts < 5000:
+attempts += 1
+candidate = sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights))
+if is_valid_combination(candidate, sum_range[0], sum_range[1], balance_eo):
+if candidate not in generated_list:
+generated_list.append(candidate)
+if not generated_list:
+col2.error("Điều kiện lọc quá khắt khe, không tìm thấy bộ số phù hợp. Hãy nới rộng khoảng Tổng điểm!")
+else:
+for idx, combo in enumerate(generated_list):
+evens = sum(1 for x in combo if x % 2 == 0)
+odds = 6 - evens
+total_pts = sum(combo)
+balls_html = "".join([
+f"{n:02d}"
+for n in combo
+])
+col2.markdown(
+f"Đề xuất #{idx+1}:   {balls_html}   "
+f"(Tổng: {total_pts} | {odds} Lẻ - {evens} Chẵn)",
+unsafe_allow_html=True
+)
+col2.write("")
+tab2.subheader("Phân tích Xác suất Markov & Phân phối Tổng điểm")
+c1, c2, c3 = tab2.columns(3)
+c1.markdown("🧠 Top 10 Số có xác suất Markov cao nhất kỳ tới")
+top_markov = freq_df.sort_values(by='Xác suất Markov (%)', ascending=False).head(10)
+c1.dataframe(top_markov[['Số', 'Xác suất Markov (%)', 'Số kỳ chưa về']], hide_index=True, use_container_width=True)
+c2.markdown("🔥 Top 10 Số Nóng (Về nhiều nhất lịch sử)")
+top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
+c2.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
+c3.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
+top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
+c3.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
+fig_sum = px.histogram(
+df,
+x='Tổng',
+nbins=15,
+title=f"Phân phối Tổng điểm 6 số trong {len(df)} kỳ lịch sử (Trung bình: {df['Tổng'].mean():.1f} điểm)",
+color_discrete_sequence=['#ef233c']
+)
+tab2.plotly_chart(fig_sum, use_container_width=True)
+fig_freq = px.bar(
+freq_df,
+x='Số',
+y='Xác suất Markov (%)',
+color='Xác suất Markov (%)',
+color_continuous_scale='Reds',
+title=f"Biểu đồ trọng số xác suất Chuỗi Markov cho kỳ tiếp theo (Sau kỳ {latest_str})"
+)
+fig_freq.update_xaxes(tickmode='linear', tick0=1, dtick=1)
+tab2.plotly_chart(fig_freq, use_container_width=True)
+tab3.subheader("Kiểm thử bộ số của bạn với toàn bộ lịch sử")
+user_input = tab3.text_input("Nhập 6 con số của bạn (cách nhau bởi dấu cách hoặc dấu gạch ngang):", placeholder="Ví dụ: 04 14 20 27 36 41")
+if tab3.button("🔍 Kiểm tra lịch sử trúng thưởng"):
+clean_nums = sorted(list(set([int(x) for x in user_input.replace('-', ' ').replace(',', ' ').split() if x.isdigit() and 1 <= int(x) <= 45])))
+if len(clean_nums) != 6:
+tab3.error("Vui lòng nhập chính xác 6 số khác nhau từ 01 đến 45.")
+else:
+user_set = set(clean_nums)
+matches = []
+for idx, row in df.iterrows():
+draw_set = {row['N1'], row['N2'], row['N3'], row['N4'], row['N5'], row['N6']}
+hit_count = len(user_set.intersection(draw_set))
+if hit_count >= 3:
+prize = {3: "Giải Ba (30.000đ)", 4: "Giải Nhì (300.000đ)", 5: "Giải Nhất (10.000.000đ)", 6: "JACKPOT"}[hit_count]
+matches.append({
+'Kỳ': row['Kỳ'],
+'Ngày': row['Ngày'],
+'Kết quả kỳ đó': f"{row['N1']:02d} - {row['N2']:02d} - {row['N3']:02d} - {row['N4']:02d} - {row['N5']:02d} - {row['N6']:02d}",
+'Số trùng': f"{hit_count} số",
+'Hạng giải': prize
+})
+if matches:
+tab3.success(f"Bộ số của bạn đã từng trúng giải {len(matches)} lần trong {len(df)} kỳ lịch sử!")
+tab3.dataframe(pd.DataFrame(matches).iloc[::-1], hide_index=True, use_container_width=True)
+else:
+tab3.info(f"Bộ số này chưa từng trùng từ 3 số trở lên trong {len(df)} kỳ lịch sử vừa qua.")
+tab4.subheader("Dữ liệu lịch sử các kỳ quay")
+tab4.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
