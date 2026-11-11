@@ -15,33 +15,42 @@ st.set_page_config(
 st.title("🎱 Phân Tích Thống Kê & Gợi Ý Số Vietlott Mega 6/45")
 st.warning("⚠️ **Lưu ý:** Xổ số là trò chơi ngẫu nhiên độc lập. Các phân tích và bộ số dưới đây chỉ mang tính chất thống kê tham khảo, không đảm bảo trúng thưởng.")
 
-# Hàm tải dữ liệu lịch sử Mega 6/45 từ nguồn dữ liệu mở
+# Hàm tải dữ liệu lịch sử Mega 6/45 chuẩn xác
 @st.cache_data(ttl=3600)
 def load_data():
-    # Nguồn dữ liệu cộng đồng cập nhật kết quả Vietlott trên GitHub
+    # Đường dẫn chính xác tới kho dữ liệu Mega 6/45 (định dạng NDJSON/JSONL)
     url = "https://githubusercontent.com"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
-            # Đọc dữ liệu JSON lines hoặc CSV tùy định dạng nguồn
             df = pd.read_json(StringIO(response.text), lines=True)
-            # Chuẩn hóa cột kết quả (thường là mảng 6 số)
+            # Sắp xếp dữ liệu theo ngày từ cũ đến mới
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date').reset_index(drop=True)
+            
+            # Tách mảng 6 số trúng thưởng thành 6 cột
             numbers_df = pd.DataFrame(df['result'].tolist(), columns=['N1', 'N2', 'N3', 'N4', 'N5', 'N6'])
-            numbers_df['Ngày'] = df['date']
-            return numbers_df, "Dữ liệu thực tế từ hệ thống"
-    except Exception:
-        pass
+            numbers_df['Ngày'] = df['date'].dt.strftime('%Y-%m-%d')
+            numbers_df['Kỳ quay'] = df['id'].astype(str).str.zfill(5)
+            
+            # Sắp xếp lại thứ tự cột cho dễ nhìn
+            numbers_df = numbers_df[['Kỳ quay', 'Ngày', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']]
+            return numbers_df, "Dữ liệu thực tế từ hệ thống Vietlott"
+    except Exception as e:
+        st.error(f"Lỗi kết nối nguồn dữ liệu: {e}")
     
-    # Dự phòng: Tạo 500 kỳ quay giả lập chuẩn xác suất nếu nguồn mạng bị gián đoạn
+    # Dự phòng nếu mất mạng hoàn toàn
     np.random.seed(42)
     dates = pd.date_range(end=pd.Timestamp.today(), periods=500, freq='2D')
     draws = [sorted(np.random.choice(range(1, 46), 6, replace=False)) for _ in range(500)]
     df_fallback = pd.DataFrame(draws, columns=['N1', 'N2', 'N3', 'N4', 'N5', 'N6'])
     df_fallback['Ngày'] = dates.strftime('%Y-%m-%d')
-    return df_fallback, "Dữ liệu mô phỏng (500 kỳ gần nhất)"
+    df_fallback['Kỳ quay'] = [f"#{i+1:05d}" for i in range(500)]
+    df_fallback = df_fallback[['Kỳ quay', 'Ngày', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']]
+    return df_fallback, "Dữ liệu mô phỏng (Do lỗi kết nối)"
 
 df, data_source = load_data()
-st.caption(f"Nguồn dữ liệu: **{data_source}** | Tổng số kỳ phân tích: **{len(df)} kỳ**")
+st.caption(f"Nguồn dữ liệu: **{data_source}** | Tổng số kỳ phân tích: **{len(df)} kỳ** | Kỳ gần nhất: **{df['Ngày'].iloc[-1]}**")
 
 # --- PHÂN TÍCH TẦN SUẤT ---
 all_numbers = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
@@ -52,12 +61,10 @@ freq_df['Tỷ lệ (%)'] = (freq_df['Số lần xuất hiện'] / len(df) * 100)
 # Tính số kỳ chưa về (Lô gan)
 last_seen = {}
 for num in range(1, 46):
-    # Tìm vị trí xuất hiện gần nhất
     mask = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].isin([num]).any(axis=1)
     indices = df.index[mask].tolist()
     if indices:
-        # Giả sử dữ liệu sắp xếp từ cũ đến mới hoặc mới đến cũ
-        last_seen[num] = len(df) - 1 - indices[-1] if indices[-1] > indices[0] else indices[0]
+        last_seen[num] = len(df) - 1 - indices[-1]
     else:
         last_seen[num] = len(df)
 
@@ -68,7 +75,7 @@ tab1, tab2, tab3 = st.tabs(["🎲 Tạo Bộ Số Gợi Ý", "📊 Biểu Đồ 
 
 with tab1:
     st.subheader("Trình tạo bộ số Mega 6/45 thông minh")
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([1, 1.5])
     
     with col1:
         method = st.radio(
