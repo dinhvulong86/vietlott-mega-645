@@ -242,7 +242,7 @@ with tab2:
         st.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất)**")
 top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
 st.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
-with c2:
+with c2 :
 st.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
 top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
 st.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
