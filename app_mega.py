@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import requests
-from bs4 import BeautifulSoup
-import re
+from io import StringIO
 import os
 
 # Cấu hình trang web
@@ -17,101 +15,150 @@ st.set_page_config(
 st.title("🎱 Phân Tích Thống Kê & Gợi Ý Số Vietlott Mega 6/45")
 st.warning("⚠️ **Lưu ý:** Xổ số là trò chơi ngẫu nhiên độc lập. Các phân tích và bộ số dưới đây chỉ mang tính chất thống kê tham khảo, không đảm bảo trúng thưởng.")
 
-# Hàm cào dữ liệu mới nhất trực tiếp từ trang web xổ số
-def fetch_latest_from_web():
-    urls = [
-        "https://minhngoc.net.vn",
-        "https://ketqua04.net"
-    ]
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    new_records = []
-    for url in urls:
-        try:
-            res = requests.get(url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                soup = BeautifulSoup(res.text, "html.parser")
-                # Tìm các khối chứa kết quả ngày và 6 quả bóng số
-                text_blocks = soup.get_text(separator="\n").split("\n")
-                
-                # Quét tìm định dạng ngày (dd/mm/yyyy) và chuỗi 6 số liên tiếp từ 01-45
-                current_date = None
-                for line in text_blocks:
-                    line = line.strip()
-                    date_match = re.search(r'(\d{2}/\d{2}/\d{4})', line)
-                    if date_match:
-                        current_date = pd.to_datetime(date_match.group(1), format='%d/%m/%Y', errors='coerce')
-                    
-                    # Tìm dãy 6 số từ 01 đến 45
-                    nums = re.findall(r'\b(0[1-9]|[1-3][0-9]|4[0-5])\b', line)
-                    if len(nums) == 6 and current_date is not None and not pd.isna(current_date):
-                        int_nums = sorted([int(x) for x in nums])
-                        if len(set(int_nums)) == 6:
-                            new_records.append({
-                                'Ngày': current_date.strftime('%Y-%m-%d'),
-                                'N1': int_nums[0], 'N2': int_nums[1], 'N3': int_nums[2],
-                                'N4': int_nums[3], 'N5': int_nums[4], 'N6': int_nums[5]
-                            })
-                            current_date = None # Reset sau khi lấy xong bộ số của ngày đó
-                if new_records:
-                    break
-        except Exception:
+# Dữ liệu lịch sử thực tế Mega 6/45 (Từ 01/05/2026 đến 08/11/2026)
+RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
+03/05/2026,07 - 09 - 14 - 24 - 38 - 39
+06/05/2026,09 - 12 - 28 - 36 - 37 - 40
+08/05/2026,04 - 16 - 17 - 26 - 34 - 42
+10/05/2026,03 - 04 - 10 - 11 - 27 - 42
+13/05/2026,08 - 10 - 15 - 32 - 35 - 43
+15/05/2026,06 - 14 - 20 - 22 - 23 - 44
+17/05/2026,04 - 08 - 13 - 15 - 27 - 31
+20/05/2026,16 - 28 - 29 - 37 - 40 - 45
+22/05/2026,02 - 03 - 14 - 28 - 41 - 44
+24/05/2026,04 - 08 - 09 - 14 - 25 - 42
+27/05/2026,02 - 13 - 17 - 18 - 31 - 37
+29/05/2026,13 - 14 - 24 - 28 - 30 - 42
+31/05/2026,01 - 12 - 16 - 21 - 24 - 41
+03/06/2026,03 - 11 - 26 - 33 - 36 - 38
+05/06/2026,13 - 16 - 19 - 32 - 36 - 39
+07/06/2026,14 - 21 - 26 - 30 - 34 - 35
+10/06/2026,03 - 09 - 17 - 22 - 27 - 32
+12/06/2026,05 - 15 - 30 - 34 - 37 - 38
+14/06/2026,07 - 16 - 20 - 22 - 24 - 38
+17/06/2026,05 - 06 - 16 - 28 - 35 - 39
+19/06/2026,06 - 09 - 19 - 29 - 30 - 36
+21/06/2026,03 - 08 - 19 - 27 - 41 - 45
+24/06/2026,03 - 11 - 17 - 19 - 30 - 32
+26/06/2026,09 - 14 - 31 - 36 - 41 - 45
+28/06/2026,02 - 11 - 18 - 33 - 42 - 45
+01/07/2026,20 - 24 - 25 - 29 - 40 - 44
+03/07/2026,06 - 20 - 21 - 28 - 30 - 39
+05/07/2026,01 - 05 - 13 - 29 - 32 - 35
+08/07/2026,13 - 14 - 22 - 26 - 37 - 44
+10/07/2026,09 - 17 - 23 - 26 - 42 - 44
+15/07/2026,07 - 11 - 29 - 37 - 43 - 45
+17/07/2026,09 - 18 - 30 - 31 - 39 - 45
+19/07/2026,12 - 22 - 24 - 26 - 31 - 37
+22/07/2026,03 - 32 - 33 - 34 - 39 - 43
+24/07/2026,12 - 16 - 36 - 38 - 41 - 45
+26/07/2026,13 - 16 - 27 - 33 - 41 - 44
+29/07/2026,02 - 06 - 21 - 31 - 36 - 45
+31/07/2026,06 - 16 - 24 - 25 - 38 - 43
+02/08/2026,03 - 12 - 20 - 25 - 27 - 37
+05/08/2026,02 - 06 - 11 - 16 - 28 - 39
+07/08/2026,02 - 08 - 19 - 30 - 36 - 43
+09/08/2026,03 - 17 - 20 - 27 - 31 - 35
+12/08/2026,15 - 17 - 22 - 29 - 33 - 40
+14/08/2026,07 - 09 - 13 - 31 - 35 - 44
+16/08/2026,06 - 07 - 15 - 19 - 36 - 41
+19/08/2026,06 - 15 - 18 - 33 - 40 - 43
+21/08/2026,07 - 26 - 31 - 38 - 43 - 45
+23/08/2026,04 - 16 - 17 - 22 - 32 - 39
+26/08/2026,03 - 10 - 11 - 16 - 33 - 40
+28/08/2026,03 - 13 - 15 - 22 - 36 - 39
+30/08/2026,01 - 03 - 12 - 15 - 37 - 45
+02/09/2026,06 - 09 - 27 - 29 - 35 - 44
+04/09/2026,16 - 21 - 23 - 29 - 34 - 45
+06/09/2026,09 - 14 - 22 - 26 - 27 - 40
+09/09/2026,12 - 17 - 20 - 21 - 36 - 43
+11/09/2026,14 - 18 - 20 - 21 - 26 - 27
+13/09/2026,04 - 12 - 31 - 34 - 38 - 41
+16/09/2026,01 - 03 - 10 - 11 - 18 - 23
+18/09/2026,07 - 12 - 26 - 27 - 41 - 43
+20/09/2026,10 - 15 - 16 - 27 - 33 - 38
+23/09/2026,02 - 06 - 12 - 15 - 25 - 26
+25/09/2026,03 - 15 - 18 - 28 - 33 - 36
+27/09/2026,02 - 04 - 13 - 25 - 31 - 39
+30/09/2026,02 - 09 - 24 - 27 - 30 - 33
+02/10/2026,01 - 06 - 20 - 27 - 31 - 41
+04/10/2026,15 - 20 - 29 - 37 - 40 - 45
+07/10/2026,10 - 14 - 36 - 37 - 41 - 43
+09/10/2026,05 - 07 - 12 - 23 - 32 - 41
+11/10/2026,03 - 09 - 16 - 29 - 30 - 44
+14/10/2026,06 - 16 - 19 - 21 - 34 - 43
+16/10/2026,09 - 20 - 26 - 35 - 36 - 38
+18/10/2026,10 - 11 - 31 - 38 - 40 - 44
+21/10/2026,04 - 10 - 14 - 22 - 25 - 44
+23/10/2026,02 - 05 - 11 - 22 - 32 - 40
+25/10/2026,04 - 13 - 22 - 25 - 40 - 41
+28/10/2026,01 - 09 - 11 - 28 - 33 - 42
+30/10/2026,07 - 21 - 22 - 40 - 41 - 45
+01/11/2026,05 - 09 - 17 - 18 - 34 - 36
+04/11/2026,07 - 14 - 20 - 30 - 34 - 40
+06/11/2026,01 - 10 - 37 - 38 - 39 - 45
+08/11/2026,01 - 02 - 14 - 20 - 23 - 36"""
+
+# Hàm chuyển đổi định dạng dữ liệu "dd/mm/yyyy,01 - 02 - 03 - 04 - 05 - 06"
+def parse_vietlott_text(raw_text):
+    records = []
+    for line in raw_text.strip().splitlines():
+        line = line.strip()
+        if not line or ',' not in line:
             continue
-    return pd.DataFrame(new_records)
+        parts = line.split(',')
+        date_str = parts[0].strip()
+        nums_str = parts[1].strip()
+        
+        # Tách các số cách nhau bởi dấu gạch ngang "-"
+        nums = [int(x.strip()) for x in nums_str.split('-') if x.strip().isdigit()]
+        if len(nums) == 6:
+            dt = pd.to_datetime(date_str, format='%d/%m/%Y', errors='coerce')
+            if not pd.isna(dt):
+                records.append({
+                    'dt': dt,
+                    'Ngày': dt.strftime('%d/%m/%Y'),
+                    'N1': nums[0], 'N2': nums[1], 'N3': nums[2],
+                    'N4': nums[3], 'N5': nums[4], 'N6': nums[5]
+                })
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.drop_duplicates(subset=['Ngày'], keep='last')
+        df = df.sort_values('dt').reset_index(drop=True)
+        df = df.drop(columns=['dt'])
+        df.insert(0, 'Kỳ', [f"#{i+1:03d}" for i in range(len(df))])
+    return df
 
-# Hàm tổng hợp dữ liệu từ file gốc + dữ liệu mới từ web
-@st.cache_data(ttl=1800) # Tự động làm mới mỗi 30 phút
-def load_data():
-    df_base = pd.DataFrame()
-    source_notes = []
+# Khởi tạo dữ liệu trong session_state để hỗ trợ thêm kỳ mới trực tiếp trên web
+if 'history_text' not in st.session_state:
+    st.session_state.history_text = RAW_HISTORY_DATA
 
-    # 1. Đọc file lịch sử trên GitHub nếu có
-    local_file = "power645.jsonl"
-    if os.path.exists(local_file):
-        try:
-            df = pd.read_json(local_file, lines=True)
-            df['date'] = pd.to_datetime(df['date'])
-            numbers_df = pd.DataFrame(df['result'].tolist(), columns=['N1', 'N2', 'N3', 'N4', 'N5', 'N6'])
-            numbers_df['Ngày'] = df['date'].dt.strftime('%Y-%m-%d')
-            df_base = numbers_df[['Ngày', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']]
-            source_notes.append("File lịch sử GitHub")
-        except Exception:
-            pass
+# Thanh bên (Sidebar) để tải thêm file hoặc nhập kỳ mới
+with st.sidebar:
+    st.header("📥 Cập nhật dữ liệu mới")
+    st.write("Bạn có thể tải file `.txt` / `.csv` (định dạng `dd/mm/yyyy,01 - 02 - 03 - 04 - 05 - 06`) hoặc nhập trực tiếp kỳ quay mới:")
+    
+    uploaded_file = st.file_uploader("Tải lên file lịch sử của bạn", type=['txt', 'csv'])
+    if uploaded_file is not None:
+        content = uploaded_file.getvalue().decode("utf-8")
+        st.session_state.history_text = content
+        st.success("Đã nạp dữ liệu từ file tải lên!")
 
-    # 2. Quét thêm dữ liệu trực tiếp từ Web
-    df_web = fetch_latest_from_web()
-    if not df_web.empty:
-        source_notes.append("Cập nhật trực tiếp từ Web")
-        if not df_base.empty:
-            df_base = pd.concat([df_base, df_web], ignore_index=True)
+    st.divider()
+    st.subheader("➕ Thêm nhanh 1 kỳ quay mới")
+    new_date = st.text_input("Ngày quay (dd/mm/yyyy):", placeholder="Ví dụ: 11/11/2026")
+    new_nums = st.text_input("6 số trúng thưởng:", placeholder="Ví dụ: 05 - 12 - 19 - 24 - 33 - 41")
+    if st.button("Thêm vào danh sách", use_container_width=True):
+        if new_date and new_nums:
+            new_line = f"\n{new_date.strip()},{new_nums.strip()}"
+            st.session_state.history_text += new_line
+            st.success(f"Đã thêm kỳ ngày {new_date}!")
         else:
-            df_base = df_web
+            st.error("Vui lòng nhập đủ ngày và 6 số.")
 
-    # 3. Xử lý trùng lặp và sắp xếp nếu có dữ liệu thật
-    if not df_base.empty:
-        df_base = df_base.drop_duplicates(subset=['Ngày'], keep='last')
-        df_base = df_base.sort_values('Ngày').reset_index(drop=True)
-        df_base.insert(0, 'Kỳ quay', [f"#{i+1:05d}" for i in range(len(df_base))])
-        return df_base, " + ".join(source_notes)
+df = parse_vietlott_text(st.session_state.history_text)
 
-    # 4. Dự phòng nếu cả file lẫn web đều không lấy được
-    np.random.seed(42)
-    dates = pd.date_range(end=pd.Timestamp.today(), periods=500, freq='2D')
-    draws = [sorted(np.random.choice(range(1, 46), 6, replace=False)) for _ in range(500)]
-    df_fallback = pd.DataFrame(draws, columns=['N1', 'N2', 'N3', 'N4', 'N5', 'N6'])
-    df_fallback['Ngày'] = dates.strftime('%Y-%m-%d')
-    df_fallback.insert(0, 'Kỳ quay', [f"#{i+1:05d}" for i in range(500)])
-    return df_fallback, "Dữ liệu mô phỏng (Không kết nối được Web/File)"
-
-# Nút làm mới dữ liệu thủ công
-if st.button("🔄 Cập nhật kết quả mới nhất từ Web"):
-    st.cache_data.clear()
-    st.rerun()
-
-df, data_source = load_data()
-st.caption(f"Nguồn dữ liệu: **{data_source}** | Tổng số kỳ phân tích: **{len(df)} kỳ** | Kỳ gần nhất: **{df['Ngày'].iloc[-1]}**")
+st.caption(f"Nguồn dữ liệu: **Dữ liệu thực tế Mega 6/45** | Tổng số kỳ phân tích: **{len(df)} kỳ** (Từ **{df['Ngày'].iloc[0]}** đến **{df['Ngày'].iloc[-1]}**)")
 
 # --- PHÂN TÍCH TẦN SUẤT ---
 all_numbers = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
@@ -186,24 +233,22 @@ with tab2:
     with c1:
         st.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất)**")
         top_hot = freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)
-        st.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
-        
-    with c2:
-        st.markdown("❄️ **Top 10 Số Lạnh (Lâu chưa về nhất)**")
-        top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
-        st.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
-
-    fig = px.bar(
-        freq_df, 
-        x='Số', 
-        y='Số lần xuất hiện',
-        color='Số lần xuất hiện',
-        color_continuous_scale='Reds',
-        title="Biểu đồ phân bổ tần suất 45 con số Mega 6/45"
-    )
-    fig.update_xaxes(tickmode='linear', tick0=1, dtick=1)
-    st.plotly_chart(fig, use_container_width=True)
-
+st.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
+with c2:
+st.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
+top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
+st.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
+fig = px.bar(
+freq_df,
+x='Số',
+y='Số lần xuất hiện',
+color='Số lần xuất hiện',
+color_continuous_scale='Reds',
+title="Biểu đồ phân bổ tần suất 45 con số Mega 6/45"
+)
+fig.update_xaxes(tickmode='linear', tick0=1, dtick=1)
+st.plotly_chart(fig, use_container_width=True)
 with tab3:
-    st.subheader("Dữ liệu các kỳ quay gần nhất")
-    st.dataframe(df.tail(50).iloc[::-1], hide_index=True, use_container_width=True)
+st.subheader("Dữ liệu các kỳ quay gần nhất")
+st.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
+
