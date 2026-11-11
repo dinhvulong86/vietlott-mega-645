@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-from io import StringIO
+from bs4 import BeautifulSoup
+import re
+import os
 
 # Cấu hình trang web
 st.set_page_config(
@@ -15,39 +17,98 @@ st.set_page_config(
 st.title("🎱 Phân Tích Thống Kê & Gợi Ý Số Vietlott Mega 6/45")
 st.warning("⚠️ **Lưu ý:** Xổ số là trò chơi ngẫu nhiên độc lập. Các phân tích và bộ số dưới đây chỉ mang tính chất thống kê tham khảo, không đảm bảo trúng thưởng.")
 
-# Hàm tải dữ liệu lịch sử Mega 6/45 chuẩn xác
-@st.cache_data(ttl=3600)
+# Hàm cào dữ liệu mới nhất trực tiếp từ trang web xổ số
+def fetch_latest_from_web():
+    urls = [
+        "https://minhngoc.net.vn",
+        "https://ketqua04.net"
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    new_records = []
+    for url in urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                # Tìm các khối chứa kết quả ngày và 6 quả bóng số
+                text_blocks = soup.get_text(separator="\n").split("\n")
+                
+                # Quét tìm định dạng ngày (dd/mm/yyyy) và chuỗi 6 số liên tiếp từ 01-45
+                current_date = None
+                for line in text_blocks:
+                    line = line.strip()
+                    date_match = re.search(r'(\d{2}/\d{2}/\d{4})', line)
+                    if date_match:
+                        current_date = pd.to_datetime(date_match.group(1), format='%d/%m/%Y', errors='coerce')
+                    
+                    # Tìm dãy 6 số từ 01 đến 45
+                    nums = re.findall(r'\b(0[1-9]|[1-3][0-9]|4[0-5])\b', line)
+                    if len(nums) == 6 and current_date is not None and not pd.isna(current_date):
+                        int_nums = sorted([int(x) for x in nums])
+                        if len(set(int_nums)) == 6:
+                            new_records.append({
+                                'Ngày': current_date.strftime('%Y-%m-%d'),
+                                'N1': int_nums[0], 'N2': int_nums[1], 'N3': int_nums[2],
+                                'N4': int_nums[3], 'N5': int_nums[4], 'N6': int_nums[5]
+                            })
+                            current_date = None # Reset sau khi lấy xong bộ số của ngày đó
+                if new_records:
+                    break
+        except Exception:
+            continue
+    return pd.DataFrame(new_records)
+
+# Hàm tổng hợp dữ liệu từ file gốc + dữ liệu mới từ web
+@st.cache_data(ttl=1800) # Tự động làm mới mỗi 30 phút
 def load_data():
-    # Đường dẫn chính xác tới kho dữ liệu Mega 6/45 (định dạng NDJSON/JSONL)
-    url = "https://githubusercontent.com"
-    try:
-        response = requests.get(url, timeout=15)
-        if response.status_code == 200:
-            df = pd.read_json(StringIO(response.text), lines=True)
-            # Sắp xếp dữ liệu theo ngày từ cũ đến mới
+    df_base = pd.DataFrame()
+    source_notes = []
+
+    # 1. Đọc file lịch sử trên GitHub nếu có
+    local_file = "power645.jsonl"
+    if os.path.exists(local_file):
+        try:
+            df = pd.read_json(local_file, lines=True)
             df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date').reset_index(drop=True)
-            
-            # Tách mảng 6 số trúng thưởng thành 6 cột
             numbers_df = pd.DataFrame(df['result'].tolist(), columns=['N1', 'N2', 'N3', 'N4', 'N5', 'N6'])
             numbers_df['Ngày'] = df['date'].dt.strftime('%Y-%m-%d')
-            numbers_df['Kỳ quay'] = df['id'].astype(str).str.zfill(5)
-            
-            # Sắp xếp lại thứ tự cột cho dễ nhìn
-            numbers_df = numbers_df[['Kỳ quay', 'Ngày', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']]
-            return numbers_df, "Dữ liệu thực tế từ hệ thống Vietlott"
-    except Exception as e:
-        st.error(f"Lỗi kết nối nguồn dữ liệu: {e}")
-    
-    # Dự phòng nếu mất mạng hoàn toàn
+            df_base = numbers_df[['Ngày', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']]
+            source_notes.append("File lịch sử GitHub")
+        except Exception:
+            pass
+
+    # 2. Quét thêm dữ liệu trực tiếp từ Web
+    df_web = fetch_latest_from_web()
+    if not df_web.empty:
+        source_notes.append("Cập nhật trực tiếp từ Web")
+        if not df_base.empty:
+            df_base = pd.concat([df_base, df_web], ignore_index=True)
+        else:
+            df_base = df_web
+
+    # 3. Xử lý trùng lặp và sắp xếp nếu có dữ liệu thật
+    if not df_base.empty:
+        df_base = df_base.drop_duplicates(subset=['Ngày'], keep='last')
+        df_base = df_base.sort_values('Ngày').reset_index(drop=True)
+        df_base.insert(0, 'Kỳ quay', [f"#{i+1:05d}" for i in range(len(df_base))])
+        return df_base, " + ".join(source_notes)
+
+    # 4. Dự phòng nếu cả file lẫn web đều không lấy được
     np.random.seed(42)
     dates = pd.date_range(end=pd.Timestamp.today(), periods=500, freq='2D')
     draws = [sorted(np.random.choice(range(1, 46), 6, replace=False)) for _ in range(500)]
     df_fallback = pd.DataFrame(draws, columns=['N1', 'N2', 'N3', 'N4', 'N5', 'N6'])
     df_fallback['Ngày'] = dates.strftime('%Y-%m-%d')
-    df_fallback['Kỳ quay'] = [f"#{i+1:05d}" for i in range(500)]
-    df_fallback = df_fallback[['Kỳ quay', 'Ngày', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']]
-    return df_fallback, "Dữ liệu mô phỏng (Do lỗi kết nối)"
+    df_fallback.insert(0, 'Kỳ quay', [f"#{i+1:05d}" for i in range(500)])
+    return df_fallback, "Dữ liệu mô phỏng (Không kết nối được Web/File)"
+
+# Nút làm mới dữ liệu thủ công
+if st.button("🔄 Cập nhật kết quả mới nhất từ Web"):
+    st.cache_data.clear()
+    st.rerun()
 
 df, data_source = load_data()
 st.caption(f"Nguồn dữ liệu: **{data_source}** | Tổng số kỳ phân tích: **{len(df)} kỳ** | Kỳ gần nhất: **{df['Ngày'].iloc[-1]}**")
@@ -109,7 +170,6 @@ with tab1:
                     odds = np.random.choice(range(1, 46, 2), 3, replace=False)
                     chosen = sorted(np.concatenate([evens, odds]))
                 
-                # Hiển thị dạng quả bóng đẹp mắt
                 balls_html = "".join([
                     f"<span style='display:inline-block; background-color:#e60000; color:white; font-weight:bold; "
                     f"border-radius:50%; width:42px; height:42px; line-height:42px; text-align:center; "
