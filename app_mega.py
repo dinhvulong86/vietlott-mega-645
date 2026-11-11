@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-# Cấu hình trang web
 st.set_page_config(
     page_title="Thống Kê & Gợi Ý Vietlott Mega 6/45",
     page_icon="🎱",
@@ -13,7 +12,6 @@ st.set_page_config(
 st.title("🎱 Phân Tích Thống Kê & Gợi Ý Số Vietlott Mega 6/45")
 st.warning("⚠️ **Lưu ý:** Xổ số là trò chơi ngẫu nhiên độc lập. Các phân tích và bộ số dưới đây chỉ mang tính chất thống kê tham khảo, không đảm bảo trúng thưởng.")
 
-# Dữ liệu lịch sử thực tế Mega 6/45 (Từ 01/05/2026 đến 08/11/2026)
 RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 03/05/2026,07 - 09 - 14 - 24 - 38 - 39
 06/05/2026,09 - 12 - 28 - 36 - 37 - 40
@@ -31,7 +29,7 @@ RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 03/06/2026,03 - 11 - 26 - 33 - 36 - 38
 05/06/2026,13 - 16 - 19 - 32 - 36 - 39
 07/06/2026,14 - 21 - 26 - 30 - 34 - 35
-10/06/2026,03 - 09 - 17 - 22 - 32 - 27
+10/06/2026,03 - 09 - 17 - 22 - 27 - 32
 12/06/2026,05 - 15 - 30 - 34 - 37 - 38
 14/06/2026,07 - 16 - 20 - 22 - 24 - 38
 17/06/2026,05 - 06 - 16 - 28 - 35 - 39
@@ -97,7 +95,6 @@ RAW_HISTORY_DATA = """01/05/2026,04 - 21 - 25 - 31 - 41 - 43
 06/11/2026,01 - 10 - 37 - 38 - 39 - 45
 08/11/2026,01 - 02 - 14 - 20 - 23 - 36"""
 
-# Hàm chuyển đổi định dạng dữ liệu
 def parse_vietlott_text(raw_text):
     records = []
     for line in raw_text.strip().splitlines():
@@ -109,7 +106,6 @@ def parse_vietlott_text(raw_text):
             continue
         date_str = parts[0].strip()
         nums_str = parts[1].strip()
-        
         nums = sorted([int(x.strip()) for x in nums_str.split('-') if x.strip().isdigit()])
         if len(nums) == 6:
             dt = pd.to_datetime(date_str, format='%d/%m/%Y', errors='coerce')
@@ -132,11 +128,9 @@ def parse_vietlott_text(raw_text):
         df.insert(0, 'Kỳ', [f"#{i+1:03d}" for i in range(len(df))])
     return df
 
-# Khởi tạo dữ liệu trong session_state
 if 'history_text' not in st.session_state:
     st.session_state.history_text = RAW_HISTORY_DATA
 
-# Thanh bên (Sidebar) cập nhật dữ liệu mới
 st.sidebar.header("📥 Cập nhật dữ liệu mới")
 st.sidebar.write("Tải lên file `.txt` / `.csv` hoặc nhập trực tiếp kỳ quay mới:")
 
@@ -168,13 +162,11 @@ first_day = df['Ngày'].iloc[0]
 last_day = df['Ngày'].iloc[-1]
 st.caption(f"Nguồn dữ liệu: **Dữ liệu thực tế Mega 6/45** | Tổng số kỳ phân tích: **{len(df)} kỳ** (Từ **{first_day}** đến **{last_day}**)")
 
-# --- PHÂN TÍCH TẦN SUẤT ---
 all_numbers = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
 freq_series = pd.Series(all_numbers).value_counts().reindex(range(1, 46), fill_value=0)
 freq_df = pd.DataFrame({'Số': freq_series.index, 'Số lần xuất hiện': freq_series.values})
 freq_df['Tỷ lệ (%)'] = (freq_df['Số lần xuất hiện'] / len(df) * 100).round(2)
 
-# Tính số kỳ chưa về (Lô gan)
 last_seen = {}
 for num in range(1, 46):
     mask = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].isin([num]).any(axis=1)
@@ -186,10 +178,8 @@ for num in range(1, 46):
 
 freq_df['Số kỳ chưa về'] = freq_df['Số'].map(last_seen)
 
-# --- GIAO DIỆN CHÍNH ---
 tab1, tab2, tab3 = st.tabs(["🎲 Tạo Bộ Số Gợi Ý", "📊 Biểu Đồ Tần Suất", "📋 Lịch Sử Kết Quả"])
 
-# TAB 1: TẠO BỘ SỐ GỢI Ý
 tab1.subheader("Trình tạo bộ số Mega 6/45 thông minh")
 col1, col2 = tab1.columns([1, 1.5])
 
@@ -232,7 +222,6 @@ if generate_btn:
         col2.markdown(f"**Vé #{i+1}:** &nbsp; {balls_html}", unsafe_allow_html=True)
         col2.write("")
 
-# TAB 2: BIỂU ĐỒ TẦN SUẤT
 tab2.subheader("Thống kê tần suất xuất hiện (Từ 01 đến 45)")
 c1, c2 = tab2.columns(2)
 
@@ -243,18 +232,17 @@ c1.dataframe(top_hot[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hid
 c2.markdown("❄️ **Top 10 Số Lạnh (Lâu chưa về nhất)**")
 top_cold = freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)
 c2.dataframe(top_cold[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
+
 fig = px.bar(
-freq_df,
-x='Số',
-y='Số lần xuất hiện',
-color='Số lần xuất hiện',
-color_continuous_scale='Reds',
-title="Biểu đồ phân bổ tần suất 45 con số Mega 6/45"
+    freq_df, 
+    x='Số', 
+    y='Số lần xuất hiện',
+    color='Số lần xuất hiện',
+    color_continuous_scale='Reds',
+    title="Biểu đồ phân bổ tần suất 45 con số Mega 6/45"
 )
 fig.update_xaxes(tickmode='linear', tick0=1, dtick=1)
 tab2.plotly_chart(fig, use_container_width=True)
-
-TAB 3: LỊCH SỬ KẾT QUẢ
 
 tab3.subheader("Dữ liệu các kỳ quay gần nhất")
 tab3.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
