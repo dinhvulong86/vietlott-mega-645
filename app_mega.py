@@ -100,10 +100,12 @@ st.sidebar.divider()
 st.sidebar.subheader("➕ Thêm nhanh 1 kỳ quay mới")
 new_date = st.sidebar.text_input("Ngày quay (dd/mm/yyyy):", placeholder="Ví dụ: 11/11/2026")
 new_nums = st.sidebar.text_input("6 số trúng thưởng:", placeholder="Ví dụ: 05 - 12 - 19 - 24 - 33 - 41")
-if st.sidebar.button("Thêm vào danh sách", use_container_width=True): st.session_state.history_text += f"\n{new_date.strip()},{new_nums.strip()}" if (new_date and new_nums) else ""; st.sidebar.success("Đã cập nhật!") if (new_date and new_nums) else st.sidebar.error("Vui lòng nhập đủ ngày và 6 số.")
+add_btn = st.sidebar.button("Thêm vào danh sách", use_container_width=True)
+if add_btn and new_date and new_nums: st.session_state.history_text += f"\n{new_date.strip()},{new_nums.strip()}"; st.sidebar.success("Đã cập nhật!")
+if add_btn and (not new_date or not new_nums): st.sidebar.error("Vui lòng nhập đủ ngày và 6 số.")
 
 lines = [l.strip() for l in st.session_state.history_text.strip().splitlines() if ',' in l]
-records = [{'dt': pd.to_datetime(l.split(',')[0].strip(), format='%d/%m/%Y', errors='coerce'), 'Ngày': l.split(',')[0].strip(), 'ns': sorted([int(x.strip()) for x in l.split(',')[1].split('-') if x.strip().isdigit()])} for l in lines]
+records = [{'dt': pd.to_datetime(l.split(',')[0].strip(), format='%d/%m/%Y', errors='coerce'), 'ns': sorted([int(x.strip()) for x in l.split(',')[1].split('-') if x.strip().isdigit()])} for l in lines]
 valid_recs = [{'dt': r['dt'], 'Ngày': r['dt'].strftime('%d/%m/%Y'), 'N1': r['ns'][0], 'N2': r['ns'][1], 'N3': r['ns'][2], 'N4': r['ns'][3], 'N5': r['ns'][4], 'N6': r['ns'][5], 'Tổng': sum(r['ns'])} for r in records if len(r['ns']) == 6 and not pd.isna(r['dt'])]
 
 df = pd.DataFrame(valid_recs).drop_duplicates(subset=['Ngày'], keep='last').sort_values('dt').reset_index(drop=True).drop(columns=['dt'])
@@ -161,20 +163,4 @@ c2.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất lịch sử)**")
 c2.dataframe(freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
 c3.markdown("❄️ **Top 10 Số Lạnh (Lâu chưa về nhất)**")
 c3.dataframe(freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
-fig_sum = px.histogram(df, x='Tổng', nbins=15, title=f"Phân phối Tổng điểm 6 số trong {len(df)} kỳ lịch sử (Trung bình: {df['Tổng'].mean():.1f} điểm)", color_discrete_sequence=['#ef233c'])
-tab2.plotly_chart(fig_sum, use_container_width=True)
-fig_freq = px.bar(freq_df, x='Số', y='Xác suất Markov (%)', color='Xác suất Markov (%)', color_continuous_scale='Reds', title=f"Biểu đồ trọng số xác suất Chuỗi Markov cho kỳ tiếp theo (Sau kỳ {latest_str})")
-fig_freq.update_xaxes(tickmode='linear', tick0=1, dtick=1)
-tab2.plotly_chart(fig_freq, use_container_width=True)
-tab3.subheader("Kiểm thử bộ số của bạn với toàn bộ lịch sử")
-user_input = tab3.text_input("Nhập 6 con số của bạn (cách nhau bởi dấu cách hoặc dấu gạch ngang):", placeholder="Ví dụ: 04 14 20 27 36 41")
-check_btn = tab3.button("🔍 Kiểm tra lịch sử trúng thưởng")
-clean_nums = sorted(list(set([int(x) for x in user_input.replace('-', ' ').replace(',', ' ').split() if x.isdigit() and 1 <= int(x) <= 45])))
-user_set = set(clean_nums)
-prize_map = {3: "Giải Ba (30.000đ)", 4: "Giải Nhì (300.000đ)", 5: "Giải Nhất (10.000.000đ)", 6: "JACKPOT"}
-matches = [{'Kỳ': r['Kỳ'], 'Ngày': r['Ngày'], 'Kết quả kỳ đó': f"{r['N1']:02d} - {r['N2']:02d} - {r['N3']:02d} - {r['N4']:02d} - {r['N5']:02d} - {r['N6']:02d}", 'Số trùng': f"{len(user_set.intersection({r['N1'], r['N2'], r['N3'], r['N4'], r['N5'], r['N6']}))} số", 'Hạng giải': prize_map[len(user_set.intersection({r['N1'], r['N2'], r['N3'], r['N4'], r['N5'], r['N6']}))]} for _, r in df.iterrows() if check_btn and len(clean_nums) == 6 and len(user_set.intersection({r['N1'], r['N2'], r['N3'], r['N4'], r['N5'], r['N6']})) >= 3]
-if check_btn and len(clean_nums) != 6: tab3.error("Vui lòng nhập chính xác 6 số khác nhau từ 01 đến 45.")
-if check_btn and len(clean_nums) == 6 and len(matches) > 0: tab3.success(f"Bộ số của bạn đã từng trúng giải {len(matches)} lần trong {len(df)} kỳ lịch sử!"); tab3.dataframe(pd.DataFrame(matches).iloc[::-1], hide_index=True, use_container_width=True)
-if check_btn and len(clean_nums) == 6 and len(matches) == 0: tab3.info(f"Bộ số này chưa từng trùng từ 3 số trở lên trong {len(df)} kỳ lịch sử vừa qua.")
-tab4.subheader("Dữ liệu lịch sử các kỳ quay")
-tab4.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
+
