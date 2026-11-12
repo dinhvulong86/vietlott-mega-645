@@ -145,7 +145,16 @@ tab1, tab2, tab3, tab4 = st.tabs(["🧠 Dự Đoán Chuỗi Markov", "📊 Phân
 
 tab1.subheader("Mô hình Dự đoán Xác suất Chuyển tiếp (Markov + Bộ lọc chuẩn)")
 col1, col2 = tab1.columns([1.1, 1.4])
-algo_choice = col1.radio("Chọn thuật toán phân tích:", ["Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn", "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn", "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn", "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn"])
+algo_choice = col1.radio(
+    "Chọn thuật toán phân tích:",
+    [
+        "🌟 Tích hợp TỔNG HỢP (Markov + Số Nóng + Số Lạnh + Monte Carlo)",
+        "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn",
+        "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn",
+        "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn",
+        "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn"
+    ]
+)
 sum_range = col1.slider("Giới hạn Tổng điểm 6 số (Vùng chuẩn: 105 - 175):", min_value=50, max_value=240, value=(105, 175))
 balance_eo = col1.checkbox("Lọc cân bằng Chẵn/Lẻ (Tỷ lệ 2-4, 3-3 hoặc 4-2)", value=True)
 num_sets = col1.slider("Số lượng bộ số đề xuất:", min_value=1, max_value=10, value=5)
@@ -156,7 +165,15 @@ if predict_btn:
     col2.success(f"Kết quả phân tích từ kỳ gốc **{latest_str}** (Tổng điểm lọc: {min_s}–{max_s}):")
     hot_p = (freq_df['Số lần xuất hiện'].values + 1) / (freq_df['Số lần xuất hiện'].values + 1).sum()
     cold_p = (freq_df['Số kỳ chưa về'].values + 1) / (freq_df['Số kỳ chưa về'].values + 1).sum()
-    weights = {"Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs, "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_p, "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p, "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": np.ones(45) / 45.0}[algo_choice]
+    mc_p = np.ones(45) / 45.0
+    all_in_one_p = 0.40 * markov_probs + 0.25 * hot_p + 0.20 * cold_p + 0.15 * mc_p
+    weights = {
+        "🌟 Tích hợp TỔNG HỢP (Markov + Số Nóng + Số Lạnh + Monte Carlo)": all_in_one_p,
+        "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs,
+        "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_p,
+        "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p,
+        "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": mc_p
+    }[algo_choice]
     candidates = [sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights)) for _ in range(4000)]
     valid_list = []
     for c in candidates:
@@ -172,9 +189,9 @@ if predict_btn:
 
 tab2.subheader("Phân tích Xác suất Markov & Phân phối Tổng điểm")
 c1, c2, c3 = tab2.columns(3)
-c1.markdown("🧠 **Top 10 Số có xác suất Markov cao nhất kỳ tới**")
+c1.markdown("🧠 Top 10 Số có xác suất Markov cao nhất kỳ tới")
 c1.dataframe(freq_df.sort_values(by='Xác suất Markov (%)', ascending=False).head(10)[['Số', 'Xác suất Markov (%)', 'Số kỳ chưa về']], hide_index=True, use_container_width=True)
-c2.markdown("🔥 **Top 10 Số Nóng (Về nhiều nhất lịch sử)**")
+c2.markdown("🔥 Top 10 Số Nóng (Về nhiều nhất lịch sử)")
 c2.dataframe(freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
 c3.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
 c3.dataframe(freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
