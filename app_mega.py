@@ -238,7 +238,6 @@ if predict_btn:
         ev = sum(1 for x in combo if x % 2 == 0)
         balls = "".join([f"<span style='{ball_style}'>{n:02d}</span>" for n in combo])
         col2.markdown(f"**Đề xuất #{idx+1}:** {balls} (Tổng: **{sum(combo)}** | {6-ev} Lẻ - {ev} Chẵn)", unsafe_allow_html=True)
-", unsafe_allow_html=True) for idx, combo in enumerate(valid_list)]
 tab2.subheader("Phân tích Xác suất Học Máy, Markov & Phân phối Tổng điểm")
 c1, c2, c3 = tab2.columns(3)
 c1.markdown("🤖 Top 10 Số điểm Học Máy (Random Forest) cao nhất")
