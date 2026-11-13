@@ -233,8 +233,11 @@ if predict_btn:
     col2.success(f"Kết quả phân tích từ kỳ gốc {latest_str} (Tổng điểm lọc: {min_s}–{max_s}):")
     raw_cands = [tuple(sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights).tolist())) for _ in range(5000)]
     valid_list = [list(c) for c in dict.fromkeys(raw_cands) if (min_s <= sum(c) <= max_s) and (not balance_eo or 2 <= sum(1 for x in c if x % 2 == 0) <= 4) and max(len(list(g)) for _, g in pd.Series(c).groupby(pd.Series(c).diff().ne(1).cumsum())) < 4][:num_sets]
-    [col2.markdown(f"Đề xuất #{idx+1}:   " + "".join([f"{n:02d}" for n in combo]) + f"   (Tổng: {sum(combo)} | {6-sum(1 for x in combo if x%2==0)} Lẻ - {sum(1 for x in combo if x%2==0)} Chẵn)
-
+        ball_style = "display:inline-block; background-color:#d90429; color:white; font-weight:bold; border-radius:50%; width:40px; height:40px; line-height:40px; text-align:center; margin-right:6px; font-size:17px;"
+    for idx, combo in enumerate(valid_list):
+        ev = sum(1 for x in combo if x % 2 == 0)
+        balls = "".join([f"<span style='{ball_style}'>{n:02d}</span>" for n in combo])
+        col2.markdown(f"**Đề xuất #{idx+1}:** {balls} (Tổng: **{sum(combo)}** | {6-ev} Lẻ - {ev} Chẵn)", unsafe_allow_html=True)
 ", unsafe_allow_html=True) for idx, combo in enumerate(valid_list)]
 tab2.subheader("Phân tích Xác suất Học Máy, Markov & Phân phối Tổng điểm")
 c1, c2, c3 = tab2.columns(3)
