@@ -259,11 +259,11 @@ user_set = set(clean_nums)
 prize_map = {3: "Giải Ba (30.000đ)", 4: "Giải Nhì (300.000đ)", 5: "Giải Nhất (10.000.000đ)", 6: "JACKPOT"}
 matches = [{'Kỳ': r['Kỳ'], 'Ngày': r['Ngày'], 'Kết quả kỳ đó': f"{r['N1']:02d} - {r['N2']:02d} - {r['N3']:02d} - {r['N4']:02d} - {r['N5']:02d} - {r['N6']:02d}", 'Số trùng': f"{len(user_set.intersection({r['N1'], r['N2'], r['N3'], r['N4'], r['N5'], r['N6']}))} số", 'Hạng giải': prize_map[len(user_set.intersection({r['N1'], r['N2'], r['N3'], r['N4'], r['N5'], r['N6']}))]} for _, r in df.iterrows() if check_btn and len(clean_nums) == 6 and len(user_set.intersection({r['N1'], r['N2'], r['N3'], r['N4'], r['N5'], r['N6']})) >= 3]
 if check_btn and len(clean_nums) != 6:
-tab3.error("Vui lòng nhập chính xác 6 số khác nhau từ 01 đến 45.")
+    tab3.error("Vui lòng nhập chính xác 6 số khác nhau từ 01 đến 45.")
 if check_btn and len(clean_nums) == 6 and len(matches) > 0:
-tab3.success(f"Bộ số của bạn đã từng trúng giải {len(matches)} lần trong {len(df)} kỳ lịch sử!")
-tab3.dataframe(pd.DataFrame(matches).iloc[::-1], hide_index=True, use_container_width=True)
+    tab3.success(f"Bộ số của bạn đã từng trúng giải **{len(matches)} lần** trong {len(df)} kỳ lịch sử!")
+    tab3.dataframe(pd.DataFrame(matches).iloc[::-1], hide_index=True, use_container_width=True)
 if check_btn and len(clean_nums) == 6 and len(matches) == 0:
-tab3.info(f"Bộ số này chưa từng trùng từ 3 số trở lên trong {len(df)} kỳ lịch sử vừa qua.")
+    tab3.info(f"Bộ số này chưa từng trùng từ 3 số trở lên trong {len(df)} kỳ lịch sử vừa qua.")
 tab4.subheader("Dữ liệu lịch sử các kỳ quay")
 tab4.dataframe(df.iloc[::-1], hide_index=True, use_container_width=True)
