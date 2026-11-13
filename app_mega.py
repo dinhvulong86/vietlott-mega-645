@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from sklearn.ensemble import RandomForestClassifier
 import os
 
 st.set_page_config(page_title="Phân Tích & Dự Đoán Vietlott Mega 6/45", page_icon="🎱", layout="wide")
-st.title("🎱 Phân Tích Chuyên Sâu & Dự Đoán Mega 6/45 (Chuỗi Markov)")
-st.warning("⚠️ **Lưu ý:** Mô hình sử dụng Chuỗi Markov và Bộ lọc phân phối chuẩn từ dữ liệu lịch sử để tối ưu hóa cấu trúc bộ số. Kết quả chỉ mang tính chất thống kê tham khảo.")
+st.title("🎱 Phân Tích Chuyên Sâu & Dự Đoán Mega 6/45 (Học Máy & Markov)")
+st.warning("⚠️ **Lưu ý:** Mô hình sử dụng Học máy (Random Forest), Chuỗi Markov và Bộ lọc phân phối chuẩn từ dữ liệu lịch sử để tối ưu hóa cấu trúc bộ số. Kết quả chỉ mang tính chất thống kê tham khảo.")
 
 DATA_FILE = "history_mega.txt"
 
@@ -128,9 +129,45 @@ markov_probs = t_mat[latest_draw].sum(axis=0)[1:46]
 markov_probs = markov_probs / markov_probs.sum()
 latest_str = " - ".join([f"{x:02d}" for x in latest_draw])
 
+@st.cache_data
+def train_random_forest(draws_tuple):
+    d_arr = np.array(draws_tuple)
+    n_draws = len(d_arr)
+    X_train, y_train = [], []
+    for t in range(15, n_draws - 1):
+        for num in range(1, 46):
+            past = d_arr[:t+1]
+            in_curr = 1 if num in d_arr[t] else 0
+            freq_5 = np.sum(d_arr[t-4:t+1] == num)
+            freq_15 = np.sum(d_arr[t-14:t+1] == num)
+            total_f = np.sum(past == num) / (t + 1)
+            hits = np.where(np.any(past == num, axis=1))[0]
+            gap = (t - hits[-1]) if len(hits) > 0 else (t + 1)
+            X_train.append([num, in_curr, freq_5, freq_15, total_f, gap])
+            y_train.append(1 if num in d_arr[t+1] else 0)
+    rf = RandomForestClassifier(n_estimators=100, max_depth=6, random_state=42)
+    rf.fit(X_train, y_train)
+    X_pred = []
+    t_last = n_draws - 1
+    for num in range(1, 46):
+        in_curr = 1 if num in d_arr[t_last] else 0
+        freq_5 = np.sum(d_arr[t_last-4:t_last+1] == num)
+        freq_15 = np.sum(d_arr[t_last-14:t_last+1] == num)
+        total_f = np.sum(d_arr == num) / n_draws
+        hits = np.where(np.any(d_arr == num, axis=1))[0]
+        gap = (t_last - hits[-1]) if len(hits) > 0 else n_draws
+        X_pred.append([num, in_curr, freq_5, freq_15, total_f, gap])
+    raw_p = rf.predict_proba(X_pred)[:, 1]
+    return raw_p / raw_p.sum()
+
+ml_probs = train_random_forest(tuple(map(tuple, draws))) if len(draws) > 20 else (np.ones(45) / 45.0)
+
+p15_val = int(np.percentile(df['Tổng'], 15))
+p85_val = int(np.percentile(df['Tổng'], 85))
+
 first_day = df['Ngày'].head(1).values.item()
 last_day = df['Ngày'].tail(1).values.item()
-st.caption(f"Nguồn dữ liệu: **Thực tế Mega 6/45 ({len(df)} kỳ: {first_day} → {last_day})** | Kỳ gần nhất: **{latest_str}**")
+st.caption(f"Nguồn dữ liệu: **Thực tế Mega 6/45 ({len(df)} kỳ: {first_day} → {last_day})** | Kỳ gần nhất: **{latest_str}** | Vùng chuẩn P15–P85: **{p15_val}–{p85_val} điểm**")
 
 st.sidebar.divider()
 st.sidebar.download_button("💾 Tải về file dữ liệu đã cập nhật", data=current_text, file_name="vietlott_mega645_updated.txt", mime="text/plain", use_container_width=True)
@@ -138,66 +175,73 @@ st.sidebar.download_button("💾 Tải về file dữ liệu đã cập nhật",
 freq_series = pd.Series(draws.flatten()).value_counts().reindex(range(1, 46), fill_value=0)
 freq_df = pd.DataFrame({'Số': freq_series.index, 'Số lần xuất hiện': freq_series.values})
 freq_df['Tỷ lệ (%)'] = (freq_df['Số lần xuất hiện'] / len(df) * 100).round(2)
+freq_df['Xác suất Học Máy (%)'] = (ml_probs * 100).round(2)
 freq_df['Xác suất Markov (%)'] = (markov_probs * 100).round(2)
 freq_df['Số kỳ chưa về'] = [len(df) - 1 - df.index[df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].isin([n]).any(axis=1)].tolist()[-1] if df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].isin([n]).any(axis=1).any() else len(df) for n in range(1, 46)]
 
-tab1, tab2, tab3, tab4 = st.tabs(["🧠 Dự Đoán Chuỗi Markov", "📊 Phân Tích Chuyên Sâu", "🔍 Dò Vé Lịch Sử", "📋 Bảng Kết Quả"])
+tab1, tab2, tab3, tab4 = st.tabs(["🧠 Dự Đoán Học Máy & Markov", "📊 Phân Tích Chuyên Sâu", "🔍 Dò Vé Lịch Sử", "📋 Bảng Kết Quả"])
 
-tab1.subheader("Mô hình Dự đoán Xác suất Chuyển tiếp (Markov + Bộ lọc chuẩn)")
+tab1.subheader("Mô hình Dự đoán Xác suất (Học Máy Random Forest + Markov + Bộ lọc P15–P85)")
 col1, col2 = tab1.columns([1.1, 1.4])
 algo_choice = col1.radio(
     "Chọn thuật toán phân tích:",
     [
-        "🌟 Tích hợp TỔNG HỢP (Markov + Số Nóng + Số Lạnh + Monte Carlo)",
+        "🌟 Tích hợp TỔNG HỢP (Học Máy + Markov + Nóng/Lạnh + Monte Carlo)",
+        "🤖 Học máy Random Forest (Huấn luyện chuỗi thời gian) + Bộ lọc chuẩn",
         "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn",
         "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn",
         "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn",
         "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn"
     ]
 )
-sum_range = col1.slider("Giới hạn Tổng điểm 6 số (Vùng chuẩn: 105 - 175):", min_value=50, max_value=240, value=(105, 175))
+sum_range = col1.slider(
+    f"Giới hạn Tổng điểm 6 số (Tự động P15–P85: {p15_val} - {p85_val}):",
+    min_value=50,
+    max_value=240,
+    value=(p15_val, p85_val)
+)
 balance_eo = col1.checkbox("Lọc cân bằng Chẵn/Lẻ (Tỷ lệ 2-4, 3-3 hoặc 4-2)", value=True)
 num_sets = col1.slider("Số lượng bộ số đề xuất:", min_value=1, max_value=10, value=5)
 predict_btn = col1.button("🚀 Chạy mô hình dự đoán", type="primary", use_container_width=True)
 
 if predict_btn:
     min_s, max_s = sum_range
-    col2.success(f"Kết quả phân tích từ kỳ gốc **{latest_str}** (Tổng điểm lọc: {min_s}–{max_s}):")
-    hot_p = (freq_df['Số lần xuất hiện'].values + 1) / (freq_df['Số lần xuất hiện'].values + 1).sum()
-    cold_p = (freq_df['Số kỳ chưa về'].values + 1) / (freq_df['Số kỳ chưa về'].values + 1).sum()
-    mc_p = np.ones(45) / 45.0
-    all_in_one_p = 0.40 * markov_probs + 0.25 * hot_p + 0.20 * cold_p + 0.15 * mc_p
-    weights = {
-        "🌟 Tích hợp TỔNG HỢP (Markov + Số Nóng + Số Lạnh + Monte Carlo)": all_in_one_p,
-        "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs,
-        "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_p,
-        "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p,
-        "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": mc_p
-    }[algo_choice]
-    candidates = [sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights)) for _ in range(4000)]
-    valid_list = []
-    for c in candidates:
-        ev = sum(1 for x in c if x % 2 == 0)
-        max_seq = max(len(list(g)) for _, g in pd.Series(c).groupby(pd.Series(c).diff().ne(1).cumsum()))
-        if (min_s <= sum(c) <= max_s) and (not balance_eo or 2 <= ev <= 4) and (max_seq < 4) and (c not in valid_list): valid_list.append(c)
-        if len(valid_list) >= num_sets: break
-    for idx, combo in enumerate(valid_list):
-        evens = sum(1 for x in combo if x % 2 == 0)
-        balls_html = "".join([f"<span style='display:inline-block; background-color:#d90429; color:white; font-weight:bold; border-radius:50%; width:40px; height:40px; line-height:40px; text-align:center; margin-right:6px; font-size:17px;'>{n:02d}</span>" for n in combo])
-        col2.markdown(f"**Đề xuất #{idx+1}:** &nbsp; {balls_html} &nbsp; <span style='color:gray; font-size:14px;'>(Tổng: <b>{sum(combo)}</b> | {6-evens} Lẻ - {evens} Chẵn)</span>", unsafe_allow_html=True)
-        col2.write("")
-
-tab2.subheader("Phân tích Xác suất Markov & Phân phối Tổng điểm")
+col2.success(f"Kết quả phân tích từ kỳ gốc {latest_str} (Tổng điểm lọc: {min_s}–{max_s}):")
+hot_p = (freq_df['Số lần xuất hiện'].values + 1) / (freq_df['Số lần xuất hiện'].values + 1).sum()
+cold_p = (freq_df['Số kỳ chưa về'].values + 1) / (freq_df['Số kỳ chưa về'].values + 1).sum()
+mc_p = np.ones(45) / 45.0
+all_in_one_p = 0.35 * ml_probs + 0.30 * markov_probs + 0.15 * hot_p + 0.10 * cold_p + 0.10 * mc_p
+weights = {
+"🌟 Tích hợp TỔNG HỢP (Học Máy + Markov + Nóng/Lạnh + Monte Carlo)": all_in_one_p,
+"🤖 Học máy Random Forest (Huấn luyện chuỗi thời gian) + Bộ lọc chuẩn": ml_probs,
+"Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs,
+"Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_p,
+"Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p,
+"Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": mc_p
+}[algo_choice]
+candidates = [sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights)) for _ in range(4000)]
+valid_list = []
+for c in candidates:
+ev = sum(1 for x in c if x % 2 == 0)
+max_seq = max(len(list(g)) for _, g in pd.Series(c).groupby(pd.Series(c).diff().ne(1).cumsum()))
+if (min_s <= sum(c) <= max_s) and (not balance_eo or 2 <= ev <= 4) and (max_seq < 4) and (c not in valid_list): valid_list.append(c)
+if len(valid_list) >= num_sets: break
+for idx, combo in enumerate(valid_list):
+evens = sum(1 for x in combo if x % 2 == 0)
+balls_html = "".join([f"{n:02d}" for n in combo])
+col2.markdown(f"Đề xuất #{idx+1}:   {balls_html}   (Tổng: {sum(combo)} | {6-evens} Lẻ - {evens} Chẵn)", unsafe_allow_html=True)
+col2.write("")
+tab2.subheader("Phân tích Xác suất Học Máy, Markov & Phân phối Tổng điểm")
 c1, c2, c3 = tab2.columns(3)
-c1.markdown("🧠 Top 10 Số có xác suất Markov cao nhất kỳ tới")
-c1.dataframe(freq_df.sort_values(by='Xác suất Markov (%)', ascending=False).head(10)[['Số', 'Xác suất Markov (%)', 'Số kỳ chưa về']], hide_index=True, use_container_width=True)
+c1.markdown("🤖 Top 10 Số điểm Học Máy (Random Forest) cao nhất")
+c1.dataframe(freq_df.sort_values(by='Xác suất Học Máy (%)', ascending=False).head(10)[['Số', 'Xác suất Học Máy (%)', 'Xác suất Markov (%)']], hide_index=True, use_container_width=True)
 c2.markdown("🔥 Top 10 Số Nóng (Về nhiều nhất lịch sử)")
 c2.dataframe(freq_df.sort_values(by='Số lần xuất hiện', ascending=False).head(10)[['Số', 'Số lần xuất hiện', 'Tỷ lệ (%)']], hide_index=True, use_container_width=True)
 c3.markdown("❄️ Top 10 Số Lạnh (Lâu chưa về nhất)")
 c3.dataframe(freq_df.sort_values(by='Số kỳ chưa về', ascending=False).head(10)[['Số', 'Số kỳ chưa về', 'Số lần xuất hiện']], hide_index=True, use_container_width=True)
-fig_sum = px.histogram(df, x='Tổng', nbins=15, title=f"Phân phối Tổng điểm 6 số trong {len(df)} kỳ lịch sử (Trung bình: {df['Tổng'].mean():.1f} điểm)", color_discrete_sequence=['#ef233c'])
+fig_sum = px.histogram(df, x='Tổng', nbins=15, title=f"Phân phối Tổng điểm 6 số trong {len(df)} kỳ lịch sử (Trung bình: {df['Tổng'].mean():.1f} | Vùng P15–P85: {p15_val}–{p85_val})", color_discrete_sequence=['#ef233c'])
 tab2.plotly_chart(fig_sum, use_container_width=True)
-fig_freq = px.bar(freq_df, x='Số', y='Xác suất Markov (%)', color='Xác suất Markov (%)', color_continuous_scale='Reds', title=f"Biểu đồ trọng số xác suất Chuỗi Markov cho kỳ tiếp theo (Sau kỳ {latest_str})")
+fig_freq = px.bar(freq_df, x='Số', y='Xác suất Học Máy (%)', color='Xác suất Học Máy (%)', color_continuous_scale='Reds', title=f"Biểu đồ trọng số dự báo Học Máy (Random Forest) cho kỳ tiếp theo (Sau kỳ {latest_str})")
 fig_freq.update_xaxes(tickmode='linear', tick0=1, dtick=1)
 tab2.plotly_chart(fig_freq, use_container_width=True)
 tab3.subheader("Kiểm thử bộ số của bạn với toàn bộ lịch sử")
