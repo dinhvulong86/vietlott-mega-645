@@ -219,13 +219,8 @@ weights = {
 "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p,
 "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": mc_p
 }[algo_choice]
-candidates = [sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights)) for _ in range(4000)]
-valid_list = []
-for c in candidates:
-ev = sum(1 for x in c if x % 2 == 0)
-max_seq = max(len(list(g)) for _, g in pd.Series(c).groupby(pd.Series(c).diff().ne(1).cumsum()))
-if (min_s <= sum(c) <= max_s) and (not balance_eo or 2 <= ev <= 4) and (max_seq < 4) and (c not in valid_list): valid_list.append(c)
-if len(valid_list) >= num_sets: break
+raw_cands = [tuple(sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights).tolist())) for _ in range(5000)]
+valid_list = [list(c) for c in dict.fromkeys(raw_cands) if (min_s <= sum(c) <= max_s) and (not balance_eo or 2 <= sum(1 for x in c if x % 2 == 0) <= 4) and max(len(list(g)) for _, g in pd.Series(c).groupby(pd.Series(c).diff().ne(1).cumsum())) < 4][:num_sets]
 for idx, combo in enumerate(valid_list):
 evens = sum(1 for x in combo if x % 2 == 0)
 balls_html = "".join([f"{n:02d}" for n in combo])
