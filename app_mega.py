@@ -206,18 +206,18 @@ predict_btn = col1.button("🚀 Chạy mô hình dự đoán", type="primary", u
 
 if predict_btn:
     min_s, max_s = sum_range
-col2.success(f"Kết quả phân tích từ kỳ gốc {latest_str} (Tổng điểm lọc: {min_s}–{max_s}):")
-hot_p = (freq_df['Số lần xuất hiện'].values + 1) / (freq_df['Số lần xuất hiện'].values + 1).sum()
-cold_p = (freq_df['Số kỳ chưa về'].values + 1) / (freq_df['Số kỳ chưa về'].values + 1).sum()
-mc_p = np.ones(45) / 45.0
-all_in_one_p = 0.35 * ml_probs + 0.30 * markov_probs + 0.15 * hot_p + 0.10 * cold_p + 0.10 * mc_p
-weights = {
-"🌟 Tích hợp TỔNG HỢP (Học Máy + Markov + Nóng/Lạnh + Monte Carlo)": all_in_one_p,
-"🤖 Học máy Random Forest (Huấn luyện chuỗi thời gian) + Bộ lọc chuẩn": ml_probs,
-"Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs,
-"Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_p,
-"Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p,
-"Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": mc_p
+    col2.success(f"Kết quả phân tích từ kỳ gốc {latest_str} (Tổng điểm lọc: {min_s}–{max_s}):")
+    hot_p = (freq_df['Số lần xuất hiện'].values + 1) / (freq_df['Số lần xuất hiện'].values + 1).sum()
+    cold_p = (freq_df['Số kỳ chưa về'].values + 1) / (freq_df['Số kỳ chưa về'].values + 1).sum()
+    mc_p = np.ones(45) / 45.0
+    all_in_one_p = 0.35 * ml_probs + 0.30 * markov_probs + 0.15 * hot_p + 0.10 * cold_p + 0.10 * mc_p
+    weights = {
+        "🌟 Tích hợp TỔNG HỢP (Học Máy + Markov + Nóng/Lạnh + Monte Carlo)": all_in_one_p,
+        "🤖 Học máy Random Forest (Huấn luyện chuỗi thời gian) + Bộ lọc chuẩn": ml_probs,
+        "Chuỗi Markov (Dựa theo kỳ gần nhất) + Bộ lọc chuẩn": markov_probs,
+        "Kết hợp Markov + Tần suất Số Nóng + Bộ lọc chuẩn": 0.6 * markov_probs + 0.4 * hot_p,
+        "Hồi quy Số Lạnh (Lô gan) + Bộ lọc chuẩn": cold_p,
+        "Mô phỏng Monte Carlo thuần túy + Bộ lọc chuẩn": mc_p
 }[algo_choice]
 raw_cands = [tuple(sorted(np.random.choice(range(1, 46), 6, replace=False, p=weights).tolist())) for _ in range(5000)]
 valid_list = [list(c) for c in dict.fromkeys(raw_cands) if (min_s <= sum(c) <= max_s) and (not balance_eo or 2 <= sum(1 for x in c if x % 2 == 0) <= 4) and max(len(list(g)) for _, g in pd.Series(c).groupby(pd.Series(c).diff().ne(1).cumsum())) < 4][:num_sets]
